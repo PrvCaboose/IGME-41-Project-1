@@ -7,8 +7,10 @@
 #include <algorithm>
 #include <cctype>
 #include <vector>
+#include <memory>
 
 using namespace std;
+
 
 struct Process {
     int pid;
@@ -43,25 +45,95 @@ struct CacheBlock {
 };
 
 struct BackingStore {
-    int numBlocks;
-    int blockSize;
+    int numBlocks = 0;
+    int blockSize = 0;
     vector<vector<int>> blocks;
     vector<bool> allocatedBlocks;
 
 };
 
+// global vars
+BackingStore backingStore;
+vector<shared_ptr<Process>> processes;
+shared_ptr<Process> currentProcess = nullptr;
+int blockSize = 0; // global block size
+int numPages = 0; // page offset i.e. p 4, 16 pages per PROCESS
+int numCacheBlocks = 0;
+int numFrames = 0;
+int numBackBlocks = 0;
+std::string mc = "t";
+std::string mr_bs = "t";
+std::string mr_rp = "lf";
+
+bool CreateProcess(int pid, int bytes) {
+    // Check if process exists
+    for (int i = 0; i < processes.size(); i++)
+    {
+        if (processes[i]->pid == pid) {
+            cout << "Error: pid already exists" << endl;
+            return false;
+        }
+    }
+
+    int numProcPages = (bytes + blockSize - 1) / blockSize;
+    // Check if there is enough pages for the process
+    if (numProcPages > numPages) {
+        cout << "Error: process to big, too many pages required" << endl;
+        return false;
+    }
+
+    // Check if there are enough free blocks in backing store
+    int numFreeBlocks = 0;
+    for (int i = 0; i < backingStore.allocatedBlocks.size(); i++)
+    {
+        if (!backingStore.allocatedBlocks[i]) {
+            numFreeBlocks++;
+        }
+    }
+
+    if (numProcPages > numFreeBlocks) {
+        cout << "Error: Not enough memory in backing store, free up memory" << endl;
+        return false;
+    }
+
+    // Create process
+    shared_ptr<Process> proc = make_shared<Process>();
+    proc->pid = pid;
+    proc->bytes = bytes;
+    proc->numPages = numProcPages;
+    proc->pageToBacking.assign(numPages, -1);
+    proc->pageToFrame.assign(numPages, -1);
+
+    for (int i = 0; i < numProcPages; i++)
+    {
+        int backBlockIndex = -1;
+        for (int i = 0; i < backingStore.numBlocks; i++)
+        {
+            if (!backingStore.allocatedBlocks[i]) {
+                backingStore.allocatedBlocks[i] = true;
+                backBlockIndex = i;
+                break;
+            }
+        }
+
+        proc->pageToBacking[i] = backBlockIndex;
+    }
+    
+    return true;
+}
+
 int main(int argc, char* argv[])
 {
     //sort through pre execution options
     
-    int blockSize = 0; // global block size
-    int numPages = 0; // page offset i.e. p 4, 16 pages per PROCESS
-    int numCacheBlocks = 0;
-    int numFrames = 0;
-    int numBackBlocks = 0;
-    std::string mc = "t";
-    std::string mr_bs = "t";
-    std::string mr_rp = "lf";
+    blockSize = 0; // global block size
+    numPages = 0; // page offset i.e. p 4, 16 pages per PROCESS
+    numCacheBlocks = 0;
+    numFrames = 0;
+    numBackBlocks = 0;
+    mc = "t";
+    mr_bs = "t";
+    mr_rp = "lf";
     bool simStart = false;
 
     std::string cmd = "";
@@ -123,10 +195,12 @@ int main(int argc, char* argv[])
     numFrames = 1 < numFrames;
     numBackBlocks = 1 < numBackBlocks;
 
-    BackingStore backingStore;
+
     backingStore.numBlocks = numBackBlocks;
     backingStore.blockSize = blockSize;
-    backingStore.blocks.assign(numBackBlocks, vector<int>(blockSize, 0));
+    backingStore.blocks.assign(numBackBlocks, vector<int>(blockSize, 0)); // Init blocks 2D vector [numBlocks][blockSize]
+    backingStore.allocatedBlocks.assign(numBackBlocks, false); // Init allocated vector to false
+
     
 }
 
